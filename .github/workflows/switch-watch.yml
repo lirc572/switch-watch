@@ -7,8 +7,12 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write # commit updated state.json
+  contents: write # commit updated state.json, only after notification succeeds
   issues: write # open/update the alert issue
+  copilot-requests: write # Copilot CLI with the built-in GITHUB_TOKEN
+
+env:
+  LLM_BACKEND: ${{ vars.LLM_BACKEND || 'copilot' }}
 
 concurrency:
   group: switch-watch
@@ -17,6 +21,7 @@ concurrency:
 jobs:
   watch:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -43,31 +48,49 @@ jobs:
             --out data/state.json \
             --summary "$GITHUB_STEP_SUMMARY" \
             --report report.json
-          echo "--- report.json ---"
-          cat report.json
 
-      - name: Analyze findings with an LLM (optional)
-        if: always()
+      - name: Check whether analysis is needed
+        id: findings
+        run: |
+          bun -e '
+            import { appendFile } from "node:fs/promises";
+            import { analysisCandidates } from "./src/analyze.ts";
+            const report = await Bun.file("report.json").json();
+            const hasHits = analysisCandidates(report).length > 0;
+            await appendFile(process.env.GITHUB_OUTPUT, `has_hits=${hasHits}\n`);
+          '
+
+      - uses: actions/setup-node@v4
+        if: steps.findings.outputs.has_hits == 'true' && env.LLM_BACKEND == 'copilot'
+        with:
+          node-version: '22'
+
+      - name: Install Copilot CLI
+        if: steps.findings.outputs.has_hits == 'true' && env.LLM_BACKEND == 'copilot'
+        continue-on-error: true # analyze.ts records CLI failures as unverified
+        run: npm install --global @github/copilot@1.0.86
+
+      - name: Analyze new findings
+        if: steps.findings.outputs.has_hits == 'true' && env.LLM_BACKEND != 'off'
+        continue-on-error: true # raw candidates must survive analysis failures
         env:
-          # Configure repository secrets to enable. Without LLM_API_KEY this
-          # step no-ops and the workflow behaves as before.
+          GITHUB_TOKEN: ${{ github.token }}
+          # Optional override only when using another user's Copilot seat.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          COPILOT_MODEL: ${{ vars.COPILOT_MODEL }}
+          COPILOT_MAX_AI_CREDITS: ${{ vars.COPILOT_MAX_AI_CREDITS }}
+          # Retain the existing OpenAI-compatible backend as an explicit option.
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
         run: |
-          # Only spend tokens when there are actual findings.
-          n=$(bun -e 'const r=await Bun.file("report.json").json(); console.log(r.changes.length)')
-          if [ "$n" = "0" ]; then
-            echo "No new findings; skipping LLM analysis."
-            exit 0
-          fi
           bun run src/analyze.ts report.json \
             --out report.json \
             --summary llm-summary.md
-          cat llm-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+          cat llm-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create or update alert issue
-        if: always()
+        if: ${{ !cancelled() && steps.scan.outcome == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bun run src/notify.ts report.json

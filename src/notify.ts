@@ -8,6 +8,7 @@
  * not running inside GitHub Actions.
  */
 import { readFile } from "node:fs/promises";
+import type { Analysis } from "./analyze.ts";
 
 interface Hit {
   match: string;
@@ -23,18 +24,6 @@ interface Change {
   url: string;
   type: "new-hits" | "changed";
   hits: Hit[];
-}
-
-interface Analysis {
-  sourceId: string;
-  url: string;
-  valid: boolean;
-  reason: string;
-  promoPeriod?: string;
-  cards?: string[];
-  conditions?: string[];
-  confidence?: number;
-  error?: boolean;
 }
 
 interface Report {
@@ -62,25 +51,36 @@ async function gh(path: string, init: RequestInit): Promise<Response> {
   });
 }
 
+/** Analysis errors (including old valid:false/error:true reports) never suppress an alert. */
+function isStale(analysis: Analysis | undefined): boolean {
+  return analysis?.valid === false && !analysis.error;
+}
+
+export function shouldNotify(report: Report): boolean {
+  return report.changes.some((c) => c.type === "new-hits" && c.hits.length > 0 &&
+    !isStale(report.analyses?.find((a) => a.sourceId === c.sourceId)));
+}
+
 export function buildBody(report: Report, runUrl?: string): string {
   const lines: string[] = [];
   lines.push(
-    "A new SingSaver promotion that mentions a **Nintendo Switch** was found.",
+    "A new **Nintendo Switch** promotion candidate was detected. Confirm the dates and terms at the source before applying.",
     "",
   );
 
   const analyses = report.analyses ?? [];
   const judged = (c: Change) => analyses.find((a) => a.sourceId === c.sourceId);
-  const isStale = (c: Change) => judged(c)?.valid === false;
-  const live = report.changes.filter((c) => !isStale(c));
-  const dead = report.changes.filter(isStale);
+  const live = report.changes.filter((c) => !isStale(judged(c)));
+  const dead = report.changes.filter((c) => isStale(judged(c)));
 
   for (const c of live) {
     const a = judged(c);
     lines.push(`### ${c.sourceLabel}`);
     lines.push(`<${c.url}>`);
     lines.push("");
-    if (a?.valid === true) {
+    if (a?.error || a?.valid === null) {
+      lines.push(`⚠️ **Unverified** — ${a.reason}`, "");
+    } else if (a?.valid === true) {
       const badge = a.confidence != null ? ` (confidence ${a.confidence})` : "";
       lines.push(`✅ **LLM: likely valid**${badge}${a.reason ? ` — ${a.reason}` : ""}`);
       if (a.promoPeriod) lines.push(`- Promo period: ${a.promoPeriod}`);
@@ -151,19 +151,9 @@ async function main(): Promise<void> {
     return;
   }
   const report = JSON.parse(await readFile(reportPath, "utf8")) as Report;
-  const newHits = report.changes.filter((c) => c.type === "new-hits");
-
-  // If the LLM judged every new hit stale, don't open an issue at all.
-  const analyses = report.analyses ?? [];
-  const anythingLive = newHits.some(
-    (c) => analyses.find((a) => a.sourceId === c.sourceId)?.valid !== false,
-  );
-  if (newHits.length === 0) {
-    console.log("No new Switch hits; nothing to report.");
-    return;
-  }
-  if (!anythingLive && analyses.length > 0) {
-    console.log("All new hits were judged stale by the LLM; skipping issue.");
+  const newHits = report.changes.filter((c) => c.type === "new-hits" && c.hits.length > 0);
+  if (!shouldNotify(report)) {
+    console.log("No new candidates, or all were judged stale; skipping issue.");
     return;
   }
 
@@ -210,9 +200,11 @@ async function main(): Promise<void> {
   console.log(`Created issue #${created.number}: ${created.html_url}`);
 }
 
-main().catch((err) => {
-  // Never fail the whole workflow just because alerting failed; the job summary
-  // and annotations have already reported the finding, and state must persist.
-  console.error(`notify failed: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(0);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    // Do not commit reported keys when GitHub notification failed: the next
+    // scheduled run must get another chance to deliver the same findings.
+    console.error(`notify failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  });
+}

@@ -45,8 +45,10 @@ A change is reported when:
 - Noise is filtered: image asset URLs, `alt`/`srcset` fragments, and
   User-Agent console-detection regexes are ignored.
 - Annotations go to **stderr**, so `--json` stdout is always valid JSON.
-- The optional LLM step never fails the workflow; a model error is recorded as
-  `valid: false, error: true` and the raw findings still go through.
+- CLI/API failures, quota errors and malformed model replies are recorded as
+  `valid: null, error: true`, not as expired offers. Raw alerts still go through.
+- If GitHub issue creation fails, the workflow fails **before committing state**,
+  so the next scheduled run can retry delivery rather than lose the alert.
 
 ## Alerts
 
@@ -59,27 +61,91 @@ On every run inside GitHub Actions the watcher:
 
 State (`data/state.json`) is committed back so hits are only reported once.
 
-### Optional LLM analysis
+### Copilot analysis (default in Actions)
 
-Rule-based detection can't tell a live promo from a page that merely still
-shows an old gift table (e.g. the DBS 2024 Switch OLED campaign page still
-returns HTTP 200). The `analyze` step sends the dates, promo codes and expiry
-phrases extracted from each page to an OpenAI-compatible chat model, which
-returns a structured verdict (`valid`, `reason`, `promoPeriod`, `cards`,
-`conditions`, `confidence`). Findings judged stale are collapsed in the issue,
-and an issue is only opened if at least one finding looks live.
+The workflow now defaults to **GitHub Copilot CLI**, using the built-in
+`GITHUB_TOKEN` with `copilot-requests: write`. It installs the tested CLI version
+`1.0.86` on Node.js 22 only when there are **new Switch hits**. Routine page-hash
+changes and already-reported gifts do not use model calls.
 
-Enable it with repository settings:
+For a **personally-owned repository**, GitHub bills this usage to the repository
+owner's Copilot seat. If that owner has **Copilot Pro**, no separate OpenAI API
+key or PAT is needed. This is **not unlimited free inference**: Copilot model
+access, credits/usage limits and billing rules still apply. Monitor your Copilot
+usage and configure the account's budget as appropriate.
+
+For an **organization-owned repository**, `GITHUB_TOKEN` usage is billed to the
+organization, not automatically to a member's personal Pro subscription. An
+organization owner must enable **Allow use of Copilot CLI billed to the
+organization**. If you explicitly want to authenticate as an individual instead,
+create a fine-grained PAT with the **Copilot Requests** user permission and store
+it as the optional `COPILOT_GITHUB_TOKEN` repository secret. Do not paste it into
+code or logs.
+
+[Official authentication and billing documentation](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/copilot-cli-in-github-actions)
+· [Actions setup](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions)
+
+Optional **repository variables** (Settings → Secrets and variables → Actions → Variables):
+
+| name | default | purpose |
+| --- | --- | --- |
+| `LLM_BACKEND` | `copilot` in Actions | `copilot`, `openai`, or `off` |
+| `COPILOT_MODEL` | `auto` | Model available to the authenticated Copilot seat |
+| `COPILOT_MAX_AI_CREDITS` | `30` | Soft spending limit per source analysis |
+
+The credit cap is **soft**: an in-progress response can exceed it. It is not a
+replacement for account billing controls. Each CLI invocation also has a
+120-second timeout, with no automatic paid-provider fallback.
+[Copilot credit-limit documentation](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli/set-session-limit)
+
+#### What the model does
+
+The model receives bounded snippets, dates, promo codes and expiry phrases —
+not the full repository. It returns a structured verdict:
+
+- `valid: true`: evidence suggests the Switch promotion is currently active;
+- `valid: false`: concrete evidence indicates expiry or an irrelevant offer;
+- `valid: null`: insufficient/conflicting evidence, or an analysis error.
+
+Explicitly stale findings are collapsed in the issue; if all new findings are
+stale, no issue is opened. Uncertain/failed analyses remain **unverified** alerts.
+HTTP 200, a call-to-action or a copyright year alone do not establish validity.
+Always verify the actual promotion terms before applying; the model can be wrong.
+
+**Safety:** the CLI runs outside the checkout in a fresh temporary working and
+configuration directory, with tools, MCP, custom instructions and remote
+sessions disabled. Prompts are passed as a single process argument (no shell),
+and unrelated environment secrets are not forwarded. Temporary data is removed
+after each call. These restrictions are not an OS-level sandbox.
+
+#### Keep using an OpenAI-compatible endpoint
+
+Set repository variable `LLM_BACKEND=openai`, then configure:
 
 | kind | name | example |
 | --- | --- | --- |
-| secret | `LLM_API_KEY` | `sk-...` |
+| secret | `LLM_API_KEY` | Your provider's API key |
 | variable | `LLM_BASE_URL` | `https://api.openai.com/v1` (default) |
 | variable | `LLM_MODEL` | `gpt-4o-mini` (default) |
 
-Any OpenAI-compatible endpoint works (OpenAI, DeepSeek, Groq, OpenRouter,
-Ollama, …). **Without `LLM_API_KEY` the step no-ops** and everything behaves as
-before.
+The endpoint must support chat completions and JSON-object output. With missing
+credentials or `LLM_BACKEND=off`, analysis is skipped and raw alerts are retained.
+Locally the default remains `openai` for backwards compatibility; use
+`LLM_BACKEND=copilot` explicitly for Copilot CLI (installed separately, with a
+Copilot-enabled token in the environment).
+
+The current `data/state.json` is **not reset** by this upgrade. Previously reported
+offers will not be re-analyzed just because the backend changed. To exercise the
+CLI with a saved report containing new hits, without touching state or opening
+issues:
+
+```bash
+LLM_BACKEND=copilot bun run src/analyze.ts report.json \
+  --out analyzed-report.json --summary llm-summary.md
+```
+
+Automated tests use injected responses and a fake CLI executable: they do not
+call a paid model or prove that a promotion is valid.
 
 ## Run locally
 
