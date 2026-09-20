@@ -85,4 +85,6 @@ export interface RunOptions {
   fetch?: typeof fetch;
   /** Concurrency for source fetching. Defaults to 4. */
   concurrency?: number;
+  /** Fetch attempts per source on transient failure. Defaults to 2. */
+  retries?: number;
 }

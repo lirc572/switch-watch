@@ -85,6 +85,12 @@ function contextAround(body: string, index: number, length: number): string {
   return body
     .slice(before, after)
     .replace(/<[^>]*>/g, " ")
+    .replace(/(?:https?:\/\/|\/\/)[^\s"']+/gi, " ")
+    .replace(/[\w%./-]+\.(?:png|jpe?g|webp|gif|svg)\b[^\s"']*/gi, " ")
+    .replace(/\b(?:srcset|sizes|width|height|loading|lazy|alt)=\S*/gi, " ")
+    .replace(/\b\d+w"?/g, " ")
+    .replace(/^[=>\s\d]+?px\)[^>]*>?/i, " ")
+    .replace(/\b\d+px\b|\b\d+vw\b|\b\d+em\b|\bmax-width:\s*\d+px\b/gi, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")

@@ -36,6 +36,16 @@ A change is reported when:
 - a source contains a Switch hit that has **not been reported before**, or
 - a source marked `watchOnChange` has a body hash that moved.
 
+### Robustness
+
+- Transient failures are retried (`--retries`, default 2).
+- Anti-bot interstitial pages (Cloudflare etc.) return a 2xx but are treated as
+  *soft failures*: they keep the previous hash so the next good run does not
+  fire a spurious `changed` alert.
+- Noise is filtered: image asset URLs, `alt`/`srcset` fragments, and
+  User-Agent console-detection regexes are ignored.
+- Annotations go to **stderr**, so `--json` stdout is always valid JSON.
+
 ## Alerts
 
 On every run inside GitHub Actions the watcher:
@@ -66,10 +76,12 @@ Useful flags:
 --state <path>       state file (default data/state.json)
 --out <path>         where to write the next state
 --summary <path>     write a Markdown summary here
---json               emit JSON instead of text
+--report <path>      write the JSON report here (stdout stays clean)
+--json               emit JSON to stdout
 --no-terms           skip the PDF T&C sources
 --fail-on-hit        exit code 2 when new hits are found
 --concurrency <n>    parallel fetches (default 4)
+--retries <n>        fetch attempts per source (default 2)
 --timeout <ms>       per-request timeout (default 30000)
 ```
 

@@ -93,8 +93,46 @@ describe("scanAll", () => {
     const fakeFetch = (async () => {
       throw new Error("boom");
     }) as unknown as typeof fetch;
-    const results = await scanAll([source], { fetch: fakeFetch });
+    const results = await scanAll([source], { fetch: fakeFetch, retries: 1 });
     expect(results[0]!.error).toContain("boom");
     expect(results[0]!.status).toBe(0);
+  });
+
+  test("treats a 2xx bot-challenge page as a soft failure", async () => {
+    const fakeFetch = (async () =>
+      new Response("Just a moment... cf_chl_ enabled", {
+        status: 202,
+      })) as unknown as typeof fetch;
+    const results = await scanAll([source], { fetch: fakeFetch, retries: 1 });
+    expect(results[0]!.error).toContain("challenge");
+    expect(results[0]!.hash).toBe("");
+    expect(results[0]!.hits).toEqual([]);
+  });
+
+  test("retries then succeeds", async () => {
+    let calls = 0;
+    const fakeFetch = (async () => {
+      calls++;
+      if (calls === 1) return new Response("Just a moment...", { status: 202 });
+      return new Response("Nintendo Switch 2 free gift", { status: 200 });
+    }) as unknown as typeof fetch;
+    const results = await scanAll([source], { fetch: fakeFetch, retries: 2 });
+    expect(calls).toBe(2);
+    expect(results[0]!.hits.length).toBe(1);
+  });
+
+  test("soft failure keeps the previous hash so the next run doesn't false-alarm", () => {
+    const state = parseState(
+      JSON.stringify({ hashes: { s1: "good" }, reported: [] }),
+    );
+    const failed: SourceResult = {
+      source,
+      status: 202,
+      hash: "",
+      hits: [],
+      error: "challenge",
+    };
+    const next = nextState([failed], state, []);
+    expect(next.hashes.s1).toBe("good");
   });
 });

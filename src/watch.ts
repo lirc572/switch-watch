@@ -49,6 +49,24 @@ function sha256(text: string): string {
 }
 
 /**
+ * Detect anti-bot interstitial pages (Cloudflare, Akamai, etc.). These return a
+ * 2xx but carry no real content, so treating them as success would overwrite a
+ * good hash and later produce a spurious "changed" alert.
+ */
+function isChallengePage(body: string): boolean {
+  if (body.length > 20_000) return false;
+  return (
+    /cf-browser-verification|cf_chl_|__cf_chl_|challenge-platform|cf-mitigated/i.test(
+      body,
+    ) ||
+    /Just a moment\.\.\.|Attention Required!|Enable JavaScript and cookies to continue|Verifying you are human/i.test(
+      body,
+    ) ||
+    /akamai bot manager|_abck|Incapsula incident id/i.test(body)
+  );
+}
+
+/**
  * Extract searchable text from a PDF. Prefers `pdftotext` (poppler), which
  * decompresses content streams. Falls back to a latin1 decode of the raw bytes
  * so uncompressed metadata / bookmarks can still be matched when poppler is
@@ -83,7 +101,27 @@ function runPdftotext(bytes: Uint8Array): Promise<string | undefined> {
   });
 }
 
-/** Fetch one source and scan it for Switch mentions. */export async function scanSource(
+/**
+ * Fetch one source and scan it for Switch mentions, retrying transient
+ * failures (network errors, bot-challenge pages) a few times.
+ */
+export async function scanSource(
+  source: Source,
+  options: RunOptions = {},
+): Promise<SourceResult> {
+  const attempts = Math.max(1, options.retries ?? 2);
+  let last: SourceResult | undefined;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    last = await scanSourceOnce(source, options);
+    if (!last.error) return last;
+    if (attempt < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 750 * (attempt + 1)));
+    }
+  }
+  return last!;
+}
+
+async function scanSourceOnce(
   source: Source,
   options: RunOptions = {},
 ): Promise<SourceResult> {
@@ -115,6 +153,15 @@ function runPdftotext(bytes: Uint8Array): Promise<string | undefined> {
       source.kind === "pdf"
         ? await readPdf(await res.arrayBuffer())
         : await res.text();
+    if (source.kind === "html" && isChallengePage(body)) {
+      return {
+        source,
+        status: res.status,
+        hash: "",
+        hits: [],
+        error: `bot challenge page (HTTP ${res.status})`,
+      };
+    }
     const normalised = normaliseForHash(body);
     return {
       source,

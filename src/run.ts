@@ -51,6 +51,9 @@ function parseArgs(argv: string[]): CliOptions {
       case "--concurrency":
         opts.concurrency = Number(value());
         break;
+      case "--retries":
+        opts.retries = Number(value());
+        break;
       case "--json":
         opts.json = true;
         break;
