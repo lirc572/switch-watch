@@ -1,0 +1,38 @@
+{
+  "name": "switch-watch",
+  "version": "0.1.0",
+  "description": "Watch SingSaver (and friends) for credit-card promotions that give away a Nintendo Switch, and alert from GitHub Actions.",
+  "type": "module",
+  "module": "src/index.ts",
+  "bin": {
+    "switch-watch": "./src/run.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "watch": "bun run src/run.ts",
+    "watch:json": "bun run src/run.ts --json",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "src",
+    "data"
+  ],
+  "keywords": [
+    "singsaver",
+    "nintendo-switch",
+    "credit-card",
+    "singapore",
+    "monitor",
+    "github-actions"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

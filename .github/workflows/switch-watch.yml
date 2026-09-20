@@ -1,0 +1,64 @@
+name: switch-watch
+
+on:
+  schedule:
+    # Twice a day, 01:17 and 13:17 UTC (09:17 and 21:17 SGT).
+    - cron: "17 1,13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # commit updated state.json
+  issues: write # open/update the alert issue
+
+concurrency:
+  group: switch-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install poppler (for PDF T&C parsing)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck & test
+        run: |
+          bun run typecheck
+          bun test
+
+      - name: Scan for Nintendo Switch offers
+        id: scan
+        run: |
+          bun run src/run.ts \
+            --state data/state.json \
+            --out data/state.json \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --json > report.json
+          cat report.json
+
+      - name: Create or update alert issue
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bun run src/notify.ts report.json
+
+      - name: Commit updated state
+        run: |
+          if git diff --quiet -- data/state.json; then
+            echo "state unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/state.json
+          git commit -m "chore(state): update watch hashes [skip ci]"
+          git push
