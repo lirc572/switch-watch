@@ -2,6 +2,10 @@
  * Public types for switch-watch.
  */
 
+import type { PageEvidence } from "./evidence.ts";
+
+export type { PageEvidence };
+
 /** A page or document that is scanned for Nintendo Switch promotions. */
 export interface Source {
   /** Stable id used in the state file. */
@@ -51,6 +55,8 @@ export interface SourceResult {
   hash: string;
   /** Switch hits found on this run. */
   hits: SwitchHit[];
+  /** Rule-based promotion evidence (dates, promo codes, expiry phrases). */
+  evidence?: PageEvidence;
   /** Error message when the fetch failed. */
   error?: string;
 }

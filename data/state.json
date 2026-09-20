@@ -1,18 +1,1 @@
-{
-  "version": 1,
-  "updatedAt": "2026-09-20T13:23:12.638Z",
-  "hashes": {
-    "best": "80afc588566604b7186fc70ca8ce8854d40536c2cff2f982f9820bd4625f4790",
-    "high-value-gifts": "c71ee8137c8a4aa0d1db2af792293221c4209f3cf9db690b2608d0da4a08f23c",
-    "dbs-livefresh-altitude-posbeveryday": "f74ffe6b4c1e5d74e1a2ad19cfa3b752db28aa0ea1640eaaf65d2732cb668ec2",
-    "campaign-index": "dd9facfed9c01dd431b65327656848aa4ee370d18cb3019f78f1cbab1164b36c",
-    "tracker-milelion": "056432399d7c097aa02eb1f4a7e47c14e8ce0c04f72aea908e19bc4f12143755",
-    "tracker-sethisfy-june-2026": "73ba08b6a92ae8eeb0db0eb777fbcb37cae3bdbef910b830c43abc8bcc6cc7cf",
-    "rewards-tnc-2026-01": "5d1d23a75eb99dc39badffa1bfdd6602f7640d45b13a455153955998775beb2f"
-  },
-  "reported": [
-    "dbs-livefresh-altitude-posbeveryday:nintendo switch oled:",
-    "rewards-tnc-2026-01:nintendo switch 2:",
-    "tracker-sethisfy-june-2026:nintendo switch 2:"
-  ]
-}
+{"version":1,"updatedAt":"1970-01-01T00:00:00.000Z","hashes":{},"reported":[]}

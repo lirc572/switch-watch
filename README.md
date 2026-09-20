@@ -45,6 +45,8 @@ A change is reported when:
 - Noise is filtered: image asset URLs, `alt`/`srcset` fragments, and
   User-Agent console-detection regexes are ignored.
 - Annotations go to **stderr**, so `--json` stdout is always valid JSON.
+- The optional LLM step never fails the workflow; a model error is recorded as
+  `valid: false, error: true` and the raw findings still go through.
 
 ## Alerts
 
@@ -52,9 +54,32 @@ On every run inside GitHub Actions the watcher:
 
 1. writes a Markdown report to the **job summary**,
 2. emits `::warning::` **annotations** for each new Switch hit,
-3. opens (or comments on) an issue labelled **`switch-offer`**.
+3. (optionally) asks an LLM whether each finding is *currently valid*,
+4. opens (or comments on) an issue labelled **`switch-offer`**.
 
 State (`data/state.json`) is committed back so hits are only reported once.
+
+### Optional LLM analysis
+
+Rule-based detection can't tell a live promo from a page that merely still
+shows an old gift table (e.g. the DBS 2024 Switch OLED campaign page still
+returns HTTP 200). The `analyze` step sends the dates, promo codes and expiry
+phrases extracted from each page to an OpenAI-compatible chat model, which
+returns a structured verdict (`valid`, `reason`, `promoPeriod`, `cards`,
+`conditions`, `confidence`). Findings judged stale are collapsed in the issue,
+and an issue is only opened if at least one finding looks live.
+
+Enable it with repository settings:
+
+| kind | name | example |
+| --- | --- | --- |
+| secret | `LLM_API_KEY` | `sk-...` |
+| variable | `LLM_BASE_URL` | `https://api.openai.com/v1` (default) |
+| variable | `LLM_MODEL` | `gpt-4o-mini` (default) |
+
+Any OpenAI-compatible endpoint works (OpenAI, DeepSeek, Groq, OpenRouter,
+Ollama, …). **Without `LLM_API_KEY` the step no-ops** and everything behaves as
+before.
 
 ## Run locally
 

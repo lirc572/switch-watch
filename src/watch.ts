@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { findSwitchHits } from "./detect.ts";
+import { extractEvidence } from "./evidence.ts";
 import type {
   Change,
   RunOptions,
@@ -168,6 +169,7 @@ async function scanSourceOnce(
       status: res.status,
       hash: sha256(normalised),
       hits: findSwitchHits(body, source),
+      evidence: extractEvidence(body, source),
     };
   } catch (err) {
     return {

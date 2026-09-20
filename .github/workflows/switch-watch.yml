@@ -46,6 +46,26 @@ jobs:
           echo "--- report.json ---"
           cat report.json
 
+      - name: Analyze findings with an LLM (optional)
+        if: always()
+        env:
+          # Configure repository secrets to enable. Without LLM_API_KEY this
+          # step no-ops and the workflow behaves as before.
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: |
+          # Only spend tokens when there are actual findings.
+          n=$(bun -e 'const r=await Bun.file("report.json").json(); console.log(r.changes.length)')
+          if [ "$n" = "0" ]; then
+            echo "No new findings; skipping LLM analysis."
+            exit 0
+          fi
+          bun run src/analyze.ts report.json \
+            --out report.json \
+            --summary llm-summary.md
+          cat llm-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+
       - name: Create or update alert issue
         if: always()
         env:

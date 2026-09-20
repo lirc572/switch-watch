@@ -96,8 +96,12 @@ async function main(): Promise<number> {
       status: r.status,
       error: r.error,
       hits: r.hits.length,
+      evidence: r.evidence,
     })),
-    changes,
+    changes: changes.map((c) => ({
+      ...c,
+      evidence: results.find((r) => r.source.id === c.sourceId)?.evidence,
+    })),
   };
 
   if (opts.json) {
