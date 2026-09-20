@@ -95,11 +95,15 @@ async function main(): Promise<void> {
       : undefined;
   const body = buildBody({ ...report, changes: newHits }, runUrl);
 
-  // Reuse an existing open issue to avoid spamming one per cron tick.
+  await ensureLabel();
+
   const search = await gh(
     `/issues?state=open&labels=switch-offer&per_page=10`,
     { method: "GET" },
   );
+  if (!search.ok) {
+    throw new Error(`list issues failed: ${search.status} ${await safeText(search)}`);
+  }
   const issues = (await search.json()) as Array<{ number: number; title: string }>;
   const existing = issues.find((i) => i.title === TITLE);
 
@@ -108,7 +112,7 @@ async function main(): Promise<void> {
       method: "POST",
       body: JSON.stringify({ body }),
     });
-    if (!res.ok) throw new Error(`comment failed: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`comment failed: ${res.status} ${await safeText(res)}`);
     console.log(`Commented on issue #${existing.number}`);
     return;
   }
@@ -121,12 +125,37 @@ async function main(): Promise<void> {
       labels: ["switch-offer"],
     }),
   });
-  if (!res.ok) throw new Error(`create failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`create failed: ${res.status} ${await safeText(res)}`);
   const created = (await res.json()) as { number: number; html_url: string };
   console.log(`Created issue #${created.number}: ${created.html_url}`);
 }
 
+async function ensureLabel(): Promise<void> {
+  // Creating a label is idempotent-ish: 201 when created, 422 when it exists.
+  const res = await gh(`/labels`, {
+    method: "POST",
+    body: JSON.stringify({
+      name: "switch-offer",
+      color: "e11d48",
+      description: "A Nintendo Switch credit-card offer was detected",
+    }),
+  });
+  if (!res.ok && res.status !== 422) {
+    console.error(`could not ensure label: ${res.status}`);
+  }
+}
+
+async function safeText(res: Response): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 500);
+  } catch {
+    return "<no body>";
+  }
+}
+
 main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+  // Never fail the whole workflow just because alerting failed; the job summary
+  // and annotations have already reported the finding, and state must persist.
+  console.error(`notify failed: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(0);
 });

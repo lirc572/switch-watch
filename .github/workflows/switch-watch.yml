@@ -42,7 +42,8 @@ jobs:
             --state data/state.json \
             --out data/state.json \
             --summary "$GITHUB_STEP_SUMMARY" \
-            --json > report.json
+            --report report.json
+          echo "--- report.json ---"
           cat report.json
 
       - name: Create or update alert issue

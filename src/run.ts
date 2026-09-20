@@ -9,6 +9,7 @@ interface CliOptions extends RunOptions {
   statePath: string;
   outPath?: string;
   summaryPath?: string;
+  reportPath?: string;
   json: boolean;
   includeTerms: boolean;
   /** Exit non-zero when new Switch hits are found (for CI gating). */
@@ -40,6 +41,9 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--summary":
         opts.summaryPath = value();
+        break;
+      case "--report":
+        opts.reportPath = value();
         break;
       case "--timeout":
         opts.timeoutMs = Number(value());
@@ -82,25 +86,25 @@ async function main(): Promise<number> {
   const { changes, nextReported } = diff(results, state);
   const newHits = changes.filter((c) => c.type === "new-hits");
 
+  const report = {
+    scannedAt: new Date().toISOString(),
+    sources: results.map((r) => ({
+      id: r.source.id,
+      status: r.status,
+      error: r.error,
+      hits: r.hits.length,
+    })),
+    changes,
+  };
+
   if (opts.json) {
-    console.log(
-      JSON.stringify(
-        {
-          scannedAt: new Date().toISOString(),
-          sources: results.map((r) => ({
-            id: r.source.id,
-            status: r.status,
-            error: r.error,
-            hits: r.hits.length,
-          })),
-          changes,
-        },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(renderTextReport(results, changes));
+  }
+
+  if (opts.reportPath) {
+    await writeFile(opts.reportPath, JSON.stringify(report, null, 2) + "\n");
   }
 
   if (opts.summaryPath) {
@@ -113,11 +117,13 @@ async function main(): Promise<number> {
   const updated = nextState(results, state, nextReported);
   await writeFile(opts.outPath ?? opts.statePath, JSON.stringify(updated, null, 2) + "\n");
 
-  // Emit GitHub Actions annotations when running in CI.
+  // Emit GitHub Actions annotations when running in CI. These are CI control
+  // commands, so keep them on stderr to leave stdout clean in every mode.
   if (process.env.GITHUB_ACTIONS === "true") {
+    const emit = (...args: unknown[]) => console.error(...args);
     for (const c of newHits) {
       for (const h of c.hits) {
-        console.log(
+        emit(
           `::warning title=Nintendo Switch offer::${h.match} — ${h.sourceLabel} (${h.url})`,
         );
       }
@@ -126,7 +132,7 @@ async function main(): Promise<number> {
       const names = newHits
         .flatMap((c) => c.hits.map((h) => h.match))
         .join(", ");
-      console.log(`::notice title=switch-watch::New Switch offers: ${names}`);
+      emit(`::notice title=switch-watch::New Switch offers: ${names}`);
     }
   }
 
