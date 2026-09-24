@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updatedAt": "2026-09-23T13:27:06.322Z",
+  "updatedAt": "2026-09-24T01:35:22.823Z",
   "hashes": {
-    "best": "e1594baa4f6631a347a676c6fe2a54c8620069b7653e13fc755b9b636a8378d9",
-    "high-value-gifts": "7ffc66bc87048c4a30cd951dd29d459d42be724dc113f4deca37f32cf6ef566f",
+    "best": "d042b656819d28739db5f9816973fd0038866aebf98c26033b19cd165fd28fbb",
+    "high-value-gifts": "38c8a87dc57382f08d495475968fbb3ef55c74aa4bc66e63cd499a8ec374c589",
     "dbs-livefresh-altitude-posbeveryday": "f74ffe6b4c1e5d74e1a2ad19cfa3b752db28aa0ea1640eaaf65d2732cb668ec2",
     "campaign-index": "dd9facfed9c01dd431b65327656848aa4ee370d18cb3019f78f1cbab1164b36c",
-    "tracker-milelion": "a7d3bc256eec73da86e0ebdc204fde34cd8d247c104e3f2db8c669a5c00083d4",
-    "tracker-sethisfy-june-2026": "9a710ffce6d80dc3e918e492b144b237c9b01be212d49fa1c17904f5abca3a47",
+    "tracker-milelion": "4885f2a5dbf3833b7a4c23e1ea041c65ad68de266c72e61c9d9cb996bf0864a4",
+    "tracker-sethisfy-june-2026": "c612033f0d5b4f2d17dd0a6a59cf0f501baf14aaadaab016df010f7e6ca8ee3b",
     "rewards-tnc-2026-01": "5d1d23a75eb99dc39badffa1bfdd6602f7640d45b13a455153955998775beb2f"
   },
   "reported": [
